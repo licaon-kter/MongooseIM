@@ -25,6 +25,7 @@
                   jiffy,
                   jwerl,
                   fusco,
+                  gun,
                   idna,
                   kernel,
                   lager,
