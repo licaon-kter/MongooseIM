@@ -8,11 +8,14 @@
 %% gen_server callbacks
 -export([init/1,
          handle_call/3,
-         handle_cast/2]).
+         handle_cast/2,
+         handle_info/2]).
 
 -record(state, {host :: inet:hostname() | inet:ip_address(),
                 port :: inet:port_number(),
-                opts :: gun:opts()}).
+                opts :: gun:opts(),
+                pid :: pid() | undefined,
+                monitor :: reference() | undefined}).
 
 -type request() :: {request,
                     Path::iodata(),
@@ -44,18 +47,34 @@ init({{Host, Port}, Opts}) ->
                      {reply, Reply :: term(), NewState :: #state{}}.
 handle_call({request, FullPath, Method, Headers, Query, Retries, Timeout}, _From, State) ->
     LHeaders = lowercase_headers(Headers),
-    {ok, PID} = gun:open(State#state.host, State#state.port, State#state.opts),
-    {ok, _Protocol} = gun:await_up(PID),
-    Res = send_request(FullPath, Method, LHeaders, Query, Retries + 1, Timeout, PID),
-    {reply, Res, State}.
+    NewState = create_or_get_connection(State),
+    Res = send_request(FullPath, Method, LHeaders, Query, Retries + 1, Timeout, NewState#state.pid),
+    {reply, Res, NewState}.
 
 -spec handle_cast(any(), State :: #state{}) -> {noreply, State :: #state{}}.
 handle_cast(_R, State) ->
     {noreply, State}.
 
+handle_info({'DOWN', MRef, process, _PID, _Reason}, #state{monitor = MRef} = State) ->
+    {noreply, State#state{pid = undefined, monitor = undefined}}.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+create_or_get_connection(#state{pid = undefined} = State) ->
+    {ok, PID} = gun:open(State#state.host, State#state.port, State#state.opts),
+    {ok, _Protocol} = gun:await_up(PID),
+    State#state{pid = PID, monitor = monitor(process, PID)};
+create_or_get_connection(#state{pid = PID, monitor = MRef} = State) ->
+    receive
+        {'DOWN', MRef, process, PID, _Reason} ->
+            {ok, NewPID} = gun:open(State#state.host, State#state.port, State#state.opts),
+            {ok, _Protocol} = gun:await_up(NewPID),
+            State#state{pid = NewPID, monitor = monitor(process, NewPID)}
+    after 0 ->
+        State
+    end.
 
 send_request(_FullPath, _Method, _LHeaders, _Query, 0, _Timeout, _PID) ->
     {error, request_timeout};
