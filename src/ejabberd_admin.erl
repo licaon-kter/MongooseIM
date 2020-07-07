@@ -448,7 +448,7 @@ do_register(List) ->
     {bad_csv, Info}.
 
 get_loglevel() ->
-    BackendList = ejabberd_loglevel:get(),
+    BackendList = mongoose_logs:get_handlers_loglevel(),
     F = fun({Backend, Level}) ->
         {Number, Name} = Level,
         io_lib:format("loglevel for ~p is ~p which is '~p'",
