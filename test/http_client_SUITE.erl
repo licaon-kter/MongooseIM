@@ -70,7 +70,9 @@ init_per_group(gun_http1, Config) ->
     [{connection_opts, [{server, {"127.0.0.1", 8080}}, {http_client, gun}]} | Config];
 init_per_group(gun_http2, Config) ->
     application:ensure_all_started(gun),
-    [{connection_opts, [{server, {"127.0.0.1", 8080}}, {http_client, gun}, {http_opts, #{protocols => [http2]}}]} | Config].
+    [{connection_opts, [{server, {"127.0.0.1", 8080}},
+                        {http_client, gun},
+                        {http_opts, #{protocols => [http2]}}]} | Config].
 
 end_per_group(_, Config) ->
     Config.

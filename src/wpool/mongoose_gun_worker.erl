@@ -30,12 +30,12 @@
 -type response_data() :: #response_data{}.
 
 -type request() :: {request,
-                    Path::iodata(),
-                    Method::iodata(),
-                    Headers::gun:headers(),
-                    Query::iodata(),
-                    Retries::non_neg_integer(),
-                    Timeout::non_neg_integer()}.
+                    Path :: iodata(),
+                    Method :: iodata(),
+                    Headers :: gun:headers(),
+                    Query :: iodata(),
+                    Retries :: non_neg_integer(),
+                    Timeout :: non_neg_integer()}.
 
 -include("mongoose_logger.hrl").
 
@@ -62,7 +62,7 @@ handle_continue(init, State) ->
     {noreply, NewState}.
 
 -spec handle_call(Request :: request(), From :: {pid(), Tag :: term()}, State :: #state{}) ->
-                     {noreply, NewState :: #state{}}.
+    {noreply, NewState :: #state{}}.
 handle_call({request, FullPath, Method, Headers, Query, _Retries, Timeout} = Request,
             From,
             #state{requests = Requests} = State) ->
@@ -71,8 +71,9 @@ handle_call({request, FullPath, Method, Headers, Query, _Retries, Timeout} = Req
     LHeaders = lowercase_headers(Headers),
 
     {StreamRef, TRef} = queue_request(FullPath, Method, LHeaders, Query, Timeout, State#state.pid),
-    NewRequests = Requests#{StreamRef =>
-                            {Request, #response_data{from=From, timestamp = Now, timeout_timer = TRef}}},
+    NewRequests = Requests#{StreamRef => {Request, #response_data{from = From,
+                                                                  timestamp = Now,
+                                                                  timeout_timer = TRef}}},
     {noreply, State#state{requests = NewRequests}}.
 
 -spec handle_cast(any(), State :: #state{}) -> {noreply, State :: #state{}}.
@@ -86,10 +87,10 @@ handle_info({gun_response, ConnPid, StreamRef, fin, Status, Headers},
     Now = erlang:monotonic_time(millisecond),
 
     gen_server:reply(ResData#response_data.from, {ok, {{integer_to_binary(Status), reason},
-                                                   Headers,
-                                                   no_data,
-                                                   0,
-                                                   ResData#response_data.timestamp - Now}}),
+                                                       Headers,
+                                                       no_data,
+                                                       0,
+                                                       ResData#response_data.timestamp - Now}}),
 
     {noreply, State#state{requests = maps:remove(StreamRef, Requests)}};
 handle_info({gun_response, ConnPid, StreamRef, nofin, Status, Headers},
@@ -97,24 +98,26 @@ handle_info({gun_response, ConnPid, StreamRef, nofin, Status, Headers},
     {Req, ResData} = maps:get(StreamRef, Requests),
     NewData = ResData#response_data{status = integer_to_binary(Status), headers = Headers},
     {noreply, State#state{requests = Requests#{StreamRef := {Req, NewData}}}};
-handle_info({gun_data, ConnPid, StreamRef, nofin, Data}, #state{pid = ConnPid, requests = Requests} = State) ->
+handle_info({gun_data, ConnPid, StreamRef, nofin, Data},
+            #state{pid = ConnPid, requests = Requests} = State) ->
     {Req, ResData} = maps:get(StreamRef, Requests),
     Acc = ResData#response_data.acc,
-    NewData = ResData#response_data{acc = <<Acc/binary,Data>>},
+    NewData = ResData#response_data{acc = <<Acc/binary, Data>>},
     {noreply, State#state{requests = Requests#{StreamRef := {Req, NewData}}}};
-handle_info({gun_data, ConnPid, StreamRef, fin, Data}, #state{pid = ConnPid, requests = Requests} = State) ->
+handle_info({gun_data, ConnPid, StreamRef, fin, Data},
+            #state{pid = ConnPid, requests = Requests} = State) ->
     Now = erlang:monotonic_time(millisecond),
     {_Req, ResData} = maps:get(StreamRef, Requests),
     timer:cancel(ResData#response_data.timeout_timer),
     Acc = ResData#response_data.acc,
-    NewData = ResData#response_data{acc = <<Acc/binary,Data/binary>>},
+    NewData = ResData#response_data{acc = <<Acc/binary, Data/binary>>},
 
     gen_server:reply(NewData#response_data.from,
                      {ok, {{NewData#response_data.status, reason},
-                      NewData#response_data.headers,
-                      NewData#response_data.acc,
-                      byte_size(NewData#response_data.acc),
-                      NewData#response_data.timestamp - Now}}),
+                           NewData#response_data.headers,
+                           NewData#response_data.acc,
+                           byte_size(NewData#response_data.acc),
+                           NewData#response_data.timestamp - Now}}),
 
     {noreply, State#state{requests = maps:remove(StreamRef, Requests)}};
 handle_info({timeout, StreamRef}, #state{requests = Requests} = State) ->
@@ -132,29 +135,32 @@ handle_info({timeout, StreamRef}, #state{requests = Requests} = State) ->
 handle_info({gun_down, PID, Protocol, Reason, KilledStreams, UnprocessedStreams}, State) ->
     ?WARNING_MSG("gun_down in mongoose_gun_worker."
                  "Gun has lost the ~p connection ~p because of ~p, killing ~p streams.",
-                 [Protocol, PID, Reason, length(KilledStreams)+length(UnprocessedStreams)]),
+                 [Protocol, PID, Reason, length(KilledStreams) + length(UnprocessedStreams)]),
     ?DEBUG("gun_down in mongoose_gun_worker. Killed streams: ~p. Unprocessed streams: ~p",
            [KilledStreams, UnprocessedStreams]),
     {noreply, State};
 handle_info({gun_up, ConnPid, _Protocol},
-            State = #state{pid=ConnPid}) ->
+            State = #state{pid = ConnPid}) ->
     ?DEBUG("gun_up in mongoose_gun_worker. Connection is back up with PID: ~p", [ConnPid]),
     {noreply, State};
 handle_info({gun_error, ConnPid, Reason},
-            State = #state{pid=ConnPid}) ->
+            State = #state{pid = ConnPid}) ->
     ?WARNING_MSG("gun_error in mongoose_gun_worker. Reason: ~p.", [Reason]),
     {noreply, State};
 handle_info({gun_error, ConnPid, StreamRef, Reason},
-            State = #state{pid=ConnPid}) ->
-    ?WARNING_MSG("gun_error in mongoose_gun_worker. Reason: ~p. Stream reference: ~p", [Reason, StreamRef]),
+            State = #state{pid = ConnPid}) ->
+    ?WARNING_MSG("gun_error in mongoose_gun_worker. Reason: ~p. Stream reference: ~p",
+                 [Reason, StreamRef]),
     {noreply, State};
-handle_info({'DOWN', MRef, process, ConnPid, Reason}, #state{pid = ConnPid, monitor = MRef} = State) ->
-    ?WARNING_MSG("Mongoose_gun_worker has lost the connection with PID ~p. Reason ~p.", [ConnPid, Reason]),
+handle_info({'DOWN', MRef, process, ConnPid, Reason},
+            #state{pid = ConnPid, monitor = MRef} = State) ->
+    ?WARNING_MSG("Mongoose_gun_worker has lost the connection with PID ~p. Reason ~p.",
+                 [ConnPid, Reason]),
     ConnectedState = open_connection(State),
     NewState = retry_all(ConnectedState),
     {noreply, NewState};
-handle_info(M, S)->
-    ?ERROR_MSG("Unexpected message in gun_worker ~p" ,[M]),
+handle_info(M, S) ->
+    ?ERROR_MSG("Unexpected message in gun_worker ~p", [M]),
     {noreply, S}.
 
 %%%===================================================================
@@ -173,7 +179,9 @@ queue_request(FullPath, Method, LHeaders, Query, Timeout, PID) ->
 
 retry_all(State) ->
     Requests = State#state.requests,
-    NewRequests = maps:fold(fun(_K, V, Acc) -> retry_request(State#state.pid, V, Acc) end, #{}, Requests),
+    NewRequests = maps:fold(fun(_K, V, Acc) -> retry_request(State#state.pid, V, Acc) end,
+                            #{},
+                            Requests),
     State#state{requests = NewRequests}.
 
 retry_request(PID, {Req, Res}, ReqAcc) ->
@@ -190,7 +198,7 @@ retry_request(PID, {Req, Res}, ReqAcc) ->
             {NewStreamRef, TRef} = queue_request(FullPath, Method, LHeaders, Query, Timeout, PID),
 
             ReqAcc#{NewStreamRef => {
-                {request, FullPath, Method, LHeaders, Query, Retries-1, Timeout},
+                {request, FullPath, Method, LHeaders, Query, Retries - 1, Timeout},
                 #response_data{from = Res#response_data.from,
                                timestamp = erlang:monotonic_time(millisecond),
                                timeout_timer = TRef}}}
