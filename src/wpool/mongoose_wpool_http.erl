@@ -59,8 +59,12 @@ wpool_spec(Host, WpoolOptsIn, ConnOpts) ->
     HttpClient = gen_mod:get_opt(http_client, ConnOpts, fusco),
     case HttpClient of
         fusco ->
+            TS = case TargetServer of
+                     {H, P} -> H ++ ":" ++ integer_to_list(P);
+                     TargetServer -> TargetServer
+                 end,
             HttpOpts = gen_mod:get_opt(http_opts, ConnOpts, []),
-            Worker = {fusco, {TargetServer, HttpOpts}};
+            Worker = {fusco, {TS, HttpOpts}};
         gun ->
             HttpOpts = gen_mod:get_opt(http_opts, ConnOpts, #{}),
             Worker = {mongoose_gun_worker, {TargetServer, HttpOpts}}
